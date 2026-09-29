@@ -104,12 +104,18 @@ jobs:
           SHA: ${{ needs.package.outputs.sha }}
           VERSION: ${{ needs.package.outputs.version }}
         run: |
+          # The tag marks the packaged commit; created here so the release
+          # needs no target, which the token cannot set in a fork
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="refs/tags/$TAG" -f sha="$SHA" >/dev/null
+          fi
           # The release may have been created by hand before the build finished
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
               arduino-esp8266-*.tar.gz sha256sums.txt
           else
-            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$SHA" --title "$TAG" \
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" \
               --notes "ESP8266 Arduino core $VERSION from commit $SHA, packaged for ESPHome's native toolchain. Checksums are in sha256sums.txt." \
               arduino-esp8266-*.tar.gz sha256sums.txt
           fi
