@@ -87,9 +87,14 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     needs: [package, compare]
     runs-on: ubuntu-24.04
-    permissions:
-      contents: write
     steps:
+      # The workflow token cannot create tags or releases in a fork
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: token
+        with:
+          client-id: ${{ vars.ESPHOME_GITHUB_APP_CLIENT_ID }}
+          private-key: ${{ secrets.ESPHOME_GITHUB_APP_PRIVATE_KEY }}
+          permission-contents: write
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: package
@@ -100,16 +105,21 @@ jobs:
           sha256sum -c sha256sums.txt
       - name: Publish
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.token.outputs.token }}
           SHA: ${{ needs.package.outputs.sha }}
           VERSION: ${{ needs.package.outputs.version }}
         run: |
+          # The tag marks the packaged commit
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="refs/tags/$TAG" -f sha="$SHA" >/dev/null
+          fi
           # The release may have been created by hand before the build finished
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
               arduino-esp8266-*.tar.gz sha256sums.txt
           else
-            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$SHA" --title "$TAG" \
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" \
               --notes "ESP8266 Arduino core $VERSION from commit $SHA, packaged for ESPHome's native toolchain. Checksums are in sha256sums.txt." \
               arduino-esp8266-*.tar.gz sha256sums.txt
           fi
