@@ -12,15 +12,16 @@ jobs:
 
   clang-format:
     name: clang-format
-    runs-on: ubuntu-latest
+    # clang-format-13 from the focal llvm repo installs on 22.04, not on 24.04
+    runs-on: ubuntu-22.04
     defaults:
       run:
         shell: bash
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         submodules: true
-    - uses: actions/setup-python@v4
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       with:
         python-version: '3.x'
     - name: Style check
@@ -46,11 +47,11 @@ jobs:
     name: codespell
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         submodules: false
     - name: Run codespell
-      uses: codespell-project/actions-codespell@master
+      uses: codespell-project/actions-codespell@e3258cca84ce02b0bb36a3d41f2c18f719a0cc1a # v2.4.3
       with:
         skip: ./libraries/ESP8266SdFat,./libraries/LittleFS/lib,./tools/pyserial,./tools/sdk,./tools/esptool,./libraries/SoftwareSerial,./libraries/Ethernet,./github/workflows,./libraries/ESP8266HTTPUpdateServer/examples/SecureBearSSLUpdater/SecureBearSSLUpdater.ino,./libraries/esp8266/examples/RTCUserMemory/RTCUserMemory.ino,./libraries/esp8266/examples/StreamString/StreamString.ino,./libraries/ESP8266WiFi/examples/BearSSL_Validation/BearSSL_Validation.ino,./libraries/ESP8266WiFi/examples/BearSSL_Sessions/BearSSL_Sessions.ino,./libraries/ESP8266WebServer/examples/HelloServerBearSSL/HelloServerBearSSL.ino,./libraries/ESP8266WebServer/examples/HttpHashCredAuth/HttpHashCredAuth.ino,./cores/esp8266/spiffs,./tests/device/test_libc/libm_string.c, ./libraries/Netdump/examples/Netdump/Netdump.ino,./libraries/ESP8266WiFi/examples/BearSSL_Server,./cores/esp8266/LwipIntfDev.h
         ignore_words_list: ESP8266,esp8266,esp,dout,DOUT,ser,ans
