@@ -273,15 +273,20 @@ static void loop_task(os_event_t *events) {
     ESP.setDramHeap();
 }
 
+#ifdef __EXCEPTIONS
 extern "C" {
 struct object { long placeholder[ 10 ]; };
 void __register_frame_info (const void *begin, struct object *ob);
 extern char __eh_frame[];
 }
+#endif
 
 static void do_global_ctors(void) {
+#ifdef __EXCEPTIONS
+    // Only the unwinder needs the frame table; without exceptions nothing reads it
     static struct object ob;
     __register_frame_info( __eh_frame, &ob );
+#endif
 
     void (**p)(void) = &__init_array_end;
     while (p != &__init_array_start)

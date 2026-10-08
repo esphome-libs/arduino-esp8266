@@ -110,9 +110,9 @@ typedef void (*voidFuncPtr)(void);
 typedef void (*voidFuncPtrArg)(void*);
 
 typedef struct {
-  uint8_t mode;
   voidFuncPtr fn;
   void * arg;
+  uint8_t mode;  // the small fields last, so an entry packs into 12 bytes
   bool functional;
 } interrupt_handler_t;
 
