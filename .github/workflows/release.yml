@@ -43,6 +43,12 @@ jobs:
             *-esphome.*) ;;
             *) echo "tag must be <core version>-esphome.<n>, got $TAG"; exit 1 ;;
           esac
+          # The tag must name the version the packaged tree declares; package.sh
+          # rewrites platform.txt from the tag, so a mismatch would relabel it
+          declared=$(sed -n 's/^version=//p' core/platform.txt)
+          if [ "$declared" != "${TAG%-esphome.*}" ]; then
+            echo "tag $TAG does not match the core's version $declared"; exit 1
+          fi
           echo "version=${TAG%-esphome.*}" >> "$GITHUB_OUTPUT"
           echo "sha=$(git -C core rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "SOURCE_DATE_EPOCH=$(git -C core log -1 --format=%ct)" >> "$GITHUB_ENV"
@@ -60,8 +66,11 @@ jobs:
   compare:
     name: Compare with the registry package
     needs: package
-    # Only upstream releases have a registry package to compare with
-    if: needs.package.outputs.version == '3.1.2' || needs.package.outputs.version == '3.1.1'
+    # Only an unmodified upstream release has a registry package to compare
+    # with; a branch carrying fixes (see README) is packaged without it
+    if: >-
+      (inputs.ref || '3.1.2') == needs.package.outputs.version
+      && (needs.package.outputs.version == '3.1.2' || needs.package.outputs.version == '3.1.1')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -84,7 +93,8 @@ jobs:
 
   release:
     name: Release
-    if: github.event_name == 'workflow_dispatch'
+    # Runs after a skipped compare too, but never after a failed one
+    if: github.event_name == 'workflow_dispatch' && !failure() && !cancelled()
     needs: [package, compare]
     runs-on: ubuntu-24.04
     steps:

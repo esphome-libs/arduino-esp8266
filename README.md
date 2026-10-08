@@ -30,7 +30,9 @@ publishing.
 
 Branch from the upstream tag, for example `esphome-3.1.2` from `3.1.2`, commit
 the fix, and run the workflow with `ref` set to that branch and the next
-`-esphome.<n>` tag. Send the fix upstream from the same commit.
+`-esphome.<n>` tag. A branch carrying fixes is not compared with the registry
+package, since it differs on purpose; only an upstream tag packaged as is gets
+that check. Upstream no longer takes ESP8266 fixes, so they are carried here.
 
 ## License
 
