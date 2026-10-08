@@ -241,6 +241,10 @@ SECTIONS
     *(.irom.exceptiontext .rodata.exceptiontext)
     *(.rodata.*__exception_what__*) /* G++ seems to throw out templatized section attributes */
 
+    /* ArduinoJson 7's PROGMEM float tables, read with pgm_read; GCC 10 drops section attributes
+       inside templates (PR70435, fixed in GCC 14) */
+    *(.rodata._ZZN11ArduinoJson*BinaryPowersOfTenEvE7factors)
+
     /* c++ typeof IDs, etc. */
     *(.rodata._ZTIN* .rodata._ZTSN10* .rodata._ZTISt* .rodata._ZTSSt*)
 
