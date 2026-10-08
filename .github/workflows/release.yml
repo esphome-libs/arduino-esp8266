@@ -43,6 +43,12 @@ jobs:
             *-esphome.*) ;;
             *) echo "tag must be <core version>-esphome.<n>, got $TAG"; exit 1 ;;
           esac
+          # The tag must name the version the packaged tree declares; package.sh
+          # rewrites platform.txt from the tag, so a mismatch would relabel it
+          declared=$(sed -n 's/^version=//p' core/platform.txt)
+          if [ "$declared" != "${TAG%-esphome.*}" ]; then
+            echo "tag $TAG does not match the core's version $declared"; exit 1
+          fi
           echo "version=${TAG%-esphome.*}" >> "$GITHUB_OUTPUT"
           echo "sha=$(git -C core rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "SOURCE_DATE_EPOCH=$(git -C core log -1 --format=%ct)" >> "$GITHUB_ENV"
