@@ -12,7 +12,8 @@ permissions:
 jobs:
   host-tests:
     name: Tests
-    runs-on: ubuntu-latest
+    # glibc 2.38+ (24.04) declares strlcpy/strlcat, and the 3.1.2 tooling predates it
+    runs-on: ubuntu-22.04
     defaults:
       run:
         shell: bash
@@ -27,7 +28,8 @@ jobs:
 
   mock-check:
     name: Mock
-    runs-on: ubuntu-latest
+    # glibc 2.38+ (24.04) declares strlcpy/strlcat, and the 3.1.2 tooling predates it
+    runs-on: ubuntu-22.04
     defaults:
       run:
         shell: bash

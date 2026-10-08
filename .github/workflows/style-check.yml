@@ -12,7 +12,8 @@ jobs:
 
   clang-format:
     name: clang-format
-    runs-on: ubuntu-latest
+    # clang-format-13 from the focal llvm repo installs on 22.04, not on 24.04
+    runs-on: ubuntu-22.04
     defaults:
       run:
         shell: bash
