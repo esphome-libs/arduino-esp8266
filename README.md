@@ -37,11 +37,14 @@ each release takes the next `n`. Two branches are involved:
    It checks that the tag matches the version in the core's `platform.txt`,
    packages the branch, tags the packaged commit and publishes
    `arduino-esp8266-<tag>.tar.gz` and `sha256sums.txt` as a release.
+   Running it again with a tag that already exists keeps the tag where it is
+   but replaces the release's files, so always use a new tag.
 3. Check the release: the tag must point at the merged commit
    (`gh api repos/esphome-libs/arduino-esp8266/git/ref/tags/<tag>`), and the
    archive must contain the change.
-4. Point ESPHome at it: in `esphome/arduino8266/framework.py` set the
-   `FRAMEWORK_RELEASES` entry to the tag, the archive's sha256 (from
+4. Point ESPHome at it: in the ESPHome repository (`esphome/esphome`), set the
+   `FRAMEWORK_RELEASES` entry in `esphome/arduino8266/framework.py` to the tag,
+   the archive's sha256 (from
    `sha256sums.txt`) and its size in bytes. ESPHome checks both when it
    downloads, so build an ESP8266 config before opening the pull request.
 
