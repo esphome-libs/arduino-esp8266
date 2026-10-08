@@ -44,9 +44,9 @@ each release takes the next `n`. Two branches are involved:
    archive must contain the change.
 4. Point ESPHome at it: in the ESPHome repository (`esphome/esphome`), set the
    `FRAMEWORK_RELEASES` entry in `esphome/arduino8266/framework.py` to the tag,
-   the archive's sha256 (from
-   `sha256sums.txt`) and its size in bytes. ESPHome checks both when it
-   downloads, so build an ESP8266 config before opening the pull request.
+   the archive's sha256 (from `sha256sums.txt`) and its size in bytes. ESPHome
+   checks both when it downloads, so build an ESP8266 config before opening the
+   pull request.
 
 Pull requests and pushes to `esphome` package upstream `3.1.2` as a check
 without publishing; only an upstream tag packaged as is gets compared with the
