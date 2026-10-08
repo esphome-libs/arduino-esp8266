@@ -15,24 +15,45 @@ left as they are. This branch, `esphome`, holds only the packaging:
   result against the PlatformIO registry package of the same version, and on
   a manual run publishes it as a release.
 
-## Cutting a release
+## Releases
 
-Run the `Package` workflow by hand with `ref` set to the core commit, tag or
-branch to package and `tag` set to `<core version>-esphome.<n>`, for example
-`ref` `3.1.2` and `tag` `3.1.2-esphome.1`. The release is created on that
-commit with `arduino-esp8266-<tag>.tar.gz` and `sha256sums.txt`, which ESPHome
-pins in `esphome/arduino8266/framework.py`.
+Releases are `<core version>-esphome.<n>`, for example `3.1.2-esphome.3`;
+each release takes the next `n`. Two branches are involved:
 
-Pull requests and pushes to this branch package `3.1.2` as a check without
-publishing.
+- `esphome` (this branch, the default) holds the packaging and the workflow.
+- `esphome-3.1.2` is upstream's `3.1.2` tag plus the fixes ESPHome carries.
+  Releases are packaged from it.
 
-## Carrying a fix
+1. Fixes are pull requests against `esphome-3.1.2`. Its CI runs the core's
+   host tests and builds; it must pass.
+2. After merging, run the `Package` workflow from `esphome` with `ref` set to
+   `esphome-3.1.2` and `tag` set to the next release:
 
-Branch from the upstream tag, for example `esphome-3.1.2` from `3.1.2`, commit
-the fix, and run the workflow with `ref` set to that branch and the next
-`-esphome.<n>` tag. A branch carrying fixes is not compared with the registry
-package, since it differs on purpose; only an upstream tag packaged as is gets
-that check. Upstream no longer takes ESP8266 fixes, so they are carried here.
+   ```sh
+   gh workflow run release.yml --repo esphome-libs/arduino-esp8266 --ref esphome \
+     -f ref=esphome-3.1.2 -f tag=3.1.2-esphome.4
+   ```
+
+   It checks that the tag matches the version in the core's `platform.txt`,
+   packages the branch, tags the packaged commit and publishes
+   `arduino-esp8266-<tag>.tar.gz` and `sha256sums.txt` as a release.
+3. Check the release: the tag must point at the merged commit
+   (`gh api repos/esphome-libs/arduino-esp8266/git/ref/tags/<tag>`), and the
+   archive must contain the change.
+4. Point ESPHome at it: in `esphome/arduino8266/framework.py` set the
+   `FRAMEWORK_RELEASES` entry to the tag, the archive's sha256 (from
+   `sha256sums.txt`) and its size in bytes. ESPHome checks both when it
+   downloads, so build an ESP8266 config before opening the pull request.
+
+Pull requests and pushes to `esphome` package upstream `3.1.2` as a check
+without publishing; only an upstream tag packaged as is gets compared with the
+PlatformIO registry package, since a branch carrying fixes differs on purpose.
+
+## Carrying a fix for a new core version
+
+Branch from the upstream tag, for example `esphome-3.1.3` from `3.1.3`, move the
+fixes over, and package that branch the same way with `3.1.3-esphome.1`.
+Upstream no longer takes ESP8266 fixes, so they are carried here.
 
 ## License
 
