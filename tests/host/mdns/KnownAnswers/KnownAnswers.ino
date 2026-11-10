@@ -1,8 +1,9 @@
 /*
-    Host test for LEAmDNS known answer handling, run with the host emulator:
+    Host test for LEAmDNS known answer handling, run with the host emulator in 32-bit mode like
+    the ESP8266 (needs g++-multilib):
 
-        cd tests/host && make mdns/KnownAnswers/KnownAnswers
-        bin/KnownAnswers/KnownAnswers
+        cd tests/host && make FORCE32=1 mdns/KnownAnswers/KnownAnswers
+        bin32/KnownAnswers/KnownAnswers
 
     It advertises one service, sends itself queries whose known answer list holds other
     instances' records, and checks the heap allocations of answer objects and the replies.
@@ -258,11 +259,13 @@ void loop() {
   }
 
   counting = false;
-  const bool replied = (gotReply && replyIsOurs);
-  const bool ok = ((c.expectedAllocations == largeAllocations) && (c.expectReply == replied));
+  // A reply must carry our record; where none is expected, any packet fails
+  const bool replyOk = (c.expectReply ? (gotReply && replyIsOurs) : !gotReply);
+  const bool ok = ((c.expectedAllocations == largeAllocations) && replyOk);
   Serial.printf("%s: %s: %zu answer allocations (expected %zu), %s (expected %s)\n",
                 ok ? "PASS" : "FAIL", c.name, largeAllocations, c.expectedAllocations,
-                replied ? "replied" : "no reply", c.expectReply ? "a reply" : "none");
+                gotReply ? (replyIsOurs ? "replied" : "a packet without our record") : "no reply",
+                c.expectReply ? "a reply" : "none");
   failures += ok ? 0 : 1;
   ++caseIndex;
   sent = false;

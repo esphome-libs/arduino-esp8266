@@ -42,6 +42,9 @@ jobs:
         make -j ../../libraries/ESP8266WebServer/examples/FSBrowser/FSBrowser
     - name: mDNS known answers
       run: |
+        # 32-bit, like the ESP8266
+        sudo apt update
+        sudo apt install g++-multilib
         cd tests/host
-        make -j mdns/KnownAnswers/KnownAnswers
-        timeout 120 ./bin/KnownAnswers/KnownAnswers
+        make -j FORCE32=1 mdns/KnownAnswers/KnownAnswers
+        timeout 120 ./bin32/KnownAnswers/KnownAnswers
