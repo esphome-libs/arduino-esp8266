@@ -44,7 +44,7 @@ jobs:
       run: |
         # 32-bit, like the ESP8266
         sudo apt update
-        sudo apt install g++-multilib
+        sudo apt install g++-10-multilib
         cd tests/host
         make -j FORCE32=1 mdns/KnownAnswers/KnownAnswers
         timeout 120 ./bin32/KnownAnswers/KnownAnswers

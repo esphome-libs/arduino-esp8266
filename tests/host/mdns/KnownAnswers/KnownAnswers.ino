@@ -1,6 +1,6 @@
 /*
     Host test for LEAmDNS known answer handling, run with the host emulator in 32-bit mode like
-    the ESP8266 (needs g++-multilib):
+    the ESP8266 (needs g++-10-multilib):
 
         cd tests/host && make FORCE32=1 mdns/KnownAnswers/KnownAnswers
         bin32/KnownAnswers/KnownAnswers
