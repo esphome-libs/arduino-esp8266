@@ -1237,8 +1237,6 @@ namespace MDNSImplementation
         /* RESOURCE RECORD */
         bool _readRRQuestion(stcMDNS_RRQuestion& p_rQuestion);
         bool _readRRAnswer(stcMDNS_RRAnswer*& p_rpAnswer);
-        bool _readRRAnswerBody(const stcMDNS_RRHeader& p_Header, uint32_t p_u32TTL,
-                               uint16_t p_u16RDLength, stcMDNS_RRAnswer*& p_rpAnswer);
 #ifdef MDNS_IP4_SUPPORT
         bool _readRRAnswerA(stcMDNS_RRAnswerA& p_rRRAnswerA, uint16_t p_u16RDLength);
 #endif

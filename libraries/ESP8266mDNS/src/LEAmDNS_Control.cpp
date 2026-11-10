@@ -171,14 +171,15 @@ namespace MDNSImplementation
 
         Reads the next known answer of a query, but only when the known answer loop in
         _parseQuery acts on it: it matches a planned reply with enough TTL left, or a tiebreak is
-        pending. Any other answer is skipped and p_rpRRAnswer stays 0, so it costs no heap.
-        Keep the conditions in step with that loop. Inlined so the header reuses the stack slot
-        of the question _parseQuery read before.
+        pending. Any other answer is skipped and p_rpRRAnswer stays 0, so it costs no heap; a used
+        one is read again by _readRRAnswer. Keep the conditions in step with that loop. Inlined so
+        the header reuses the stack slot of the question _parseQuery read before.
     */
     inline bool __attribute__((always_inline))
     MDNSResponder::_readKnownAnswer(const MDNSResponder::stcMDNSSendParameter& p_SendParameter,
                                     MDNSResponder::stcMDNS_RRAnswer*&          p_rpRRAnswer)
     {
+        const size_t     stStart = m_pUDPContext->tell();
         stcMDNS_RRHeader header;
         uint32_t         u32TTL;
         uint16_t         u16RDLength;
@@ -205,7 +206,8 @@ namespace MDNSImplementation
         }
         if (bUsed)
         {
-            return _readRRAnswerBody(header, u32TTL, u16RDLength, p_rpRRAnswer);
+            m_pUDPContext->seek(stStart);
+            return _readRRAnswer(p_rpRRAnswer);
         }
 
         const size_t stNext = (m_pUDPContext->tell() + u16RDLength);
