@@ -40,3 +40,8 @@ jobs:
     - run: |
         cd tests/host
         make -j ../../libraries/ESP8266WebServer/examples/FSBrowser/FSBrowser
+    - name: mDNS known answers
+      run: |
+        cd tests/host
+        make -j mdns/KnownAnswers/KnownAnswers
+        timeout 120 ./bin/KnownAnswers/KnownAnswers
