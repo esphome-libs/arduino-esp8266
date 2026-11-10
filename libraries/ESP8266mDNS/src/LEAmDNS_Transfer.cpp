@@ -500,99 +500,114 @@ namespace MDNSImplementation
                     DEBUG_OUTPUT.printf_P(PSTR("\n"));
                     );*/
 
-            switch (header.m_Attributes.m_u16Type
-                    & (~0x8000))  // Topmost bit might carry 'cache flush' flag
-            {
-#ifdef MDNS_IP4_SUPPORT
-            case DNS_RRTYPE_A:
-                p_rpRRAnswer = new stcMDNS_RRAnswerA(header, u32TTL);
-                bResult      = _readRRAnswerA(*(stcMDNS_RRAnswerA*&)p_rpRRAnswer, u16RDLength);
-                break;
-#endif
-            case DNS_RRTYPE_PTR:
-                p_rpRRAnswer = new stcMDNS_RRAnswerPTR(header, u32TTL);
-                bResult      = _readRRAnswerPTR(*(stcMDNS_RRAnswerPTR*&)p_rpRRAnswer, u16RDLength);
-                break;
-            case DNS_RRTYPE_TXT:
-                p_rpRRAnswer = new stcMDNS_RRAnswerTXT(header, u32TTL);
-                bResult      = _readRRAnswerTXT(*(stcMDNS_RRAnswerTXT*&)p_rpRRAnswer, u16RDLength);
-                break;
-#ifdef MDNS_IP6_SUPPORT
-            case DNS_RRTYPE_AAAA:
-                p_rpRRAnswer = new stcMDNS_RRAnswerAAAA(header, u32TTL);
-                bResult = _readRRAnswerAAAA(*(stcMDNS_RRAnswerAAAA*&)p_rpRRAnswer, u16RDLength);
-                break;
-#endif
-            case DNS_RRTYPE_SRV:
-                p_rpRRAnswer = new stcMDNS_RRAnswerSRV(header, u32TTL);
-                bResult      = _readRRAnswerSRV(*(stcMDNS_RRAnswerSRV*&)p_rpRRAnswer, u16RDLength);
-                break;
-            default:
-                p_rpRRAnswer = new stcMDNS_RRAnswerGeneric(header, u32TTL);
-                bResult
-                    = _readRRAnswerGeneric(*(stcMDNS_RRAnswerGeneric*&)p_rpRRAnswer, u16RDLength);
-                break;
-            }
-            DEBUG_EX_INFO(
-                if ((bResult) && (p_rpRRAnswer)) {
-                    DEBUG_OUTPUT.printf_P(PSTR("[MDNSResponder] _readRRAnswer: "));
-                    _printRRDomain(p_rpRRAnswer->m_Header.m_Domain);
-                    DEBUG_OUTPUT.printf_P(PSTR(" Type:0x%04X Class:0x%04X TTL:%u, RDLength:%u "),
-                                          p_rpRRAnswer->m_Header.m_Attributes.m_u16Type,
-                                          p_rpRRAnswer->m_Header.m_Attributes.m_u16Class,
-                                          p_rpRRAnswer->m_u32TTL, u16RDLength);
-                    switch (header.m_Attributes.m_u16Type
-                            & (~0x8000))  // Topmost bit might carry 'cache flush' flag
-                    {
-#ifdef MDNS_IP4_SUPPORT
-                    case DNS_RRTYPE_A:
-                        DEBUG_OUTPUT.printf_P(
-                            PSTR("A IP:%s"),
-                            ((stcMDNS_RRAnswerA*&)p_rpRRAnswer)->m_IPAddress.toString().c_str());
-                        break;
-#endif
-                    case DNS_RRTYPE_PTR:
-                        DEBUG_OUTPUT.printf_P(PSTR("PTR "));
-                        _printRRDomain(((stcMDNS_RRAnswerPTR*&)p_rpRRAnswer)->m_PTRDomain);
-                        break;
-                    case DNS_RRTYPE_TXT:
-                    {
-                        size_t stTxtLength
-                            = ((stcMDNS_RRAnswerTXT*&)p_rpRRAnswer)->m_Txts.c_strLength();
-                        char* pTxts = new char[stTxtLength];
-                        if (pTxts)
-                        {
-                            ((stcMDNS_RRAnswerTXT*&)p_rpRRAnswer)->m_Txts.c_str(pTxts);
-                            DEBUG_OUTPUT.printf_P(PSTR("TXT(%zu) %s"), stTxtLength, pTxts);
-                            delete[] pTxts;
-                        }
-                        break;
-                    }
-#ifdef MDNS_IP6_SUPPORT
-                    case DNS_RRTYPE_AAAA:
-                        DEBUG_OUTPUT.printf_P(
-                            PSTR("AAAA IP:%s"),
-                            ((stcMDNS_RRAnswerA*&)p_rpRRAnswer)->m_IPAddress.toString().c_str());
-                        break;
-#endif
-                    case DNS_RRTYPE_SRV:
-                        DEBUG_OUTPUT.printf_P(PSTR("SRV Port:%u "),
-                                              ((stcMDNS_RRAnswerSRV*&)p_rpRRAnswer)->m_u16Port);
-                        _printRRDomain(((stcMDNS_RRAnswerSRV*&)p_rpRRAnswer)->m_SRVDomain);
-                        break;
-                    default:
-                        DEBUG_OUTPUT.printf_P(PSTR("generic "));
-                        break;
-                    }
-                    DEBUG_OUTPUT.printf_P(PSTR("\n"));
-                } else {
-                    DEBUG_OUTPUT.printf_P(PSTR("[MDNSResponder] _readRRAnswer: FAILED to read "
-                                               "specific answer of type 0x%04X!\n"),
-                                          p_rpRRAnswer->m_Header.m_Attributes.m_u16Type);
-                });  // DEBUG_EX_INFO
+            bResult = _readRRAnswerBody(header, u32TTL, u16RDLength, p_rpRRAnswer);
         }
         DEBUG_EX_ERR(if (!bResult)
                          DEBUG_OUTPUT.printf_P(PSTR("[MDNSResponder] _readRRAnswer: FAILED!\n")););
+        return bResult;
+    }
+
+    /*
+        MDNSResponder::_readRRAnswerBody
+
+        Reads the rest of an answer whose header was read already, into a new answer object of
+        the matching type.
+    */
+    bool MDNSResponder::_readRRAnswerBody(const MDNSResponder::stcMDNS_RRHeader& p_Header,
+                                          uint32_t p_u32TTL, uint16_t p_u16RDLength,
+                                          MDNSResponder::stcMDNS_RRAnswer*& p_rpRRAnswer)
+    {
+        bool bResult = false;
+
+        switch (p_Header.m_Attributes.m_u16Type
+                & (~0x8000))  // Topmost bit might carry 'cache flush' flag
+        {
+#ifdef MDNS_IP4_SUPPORT
+        case DNS_RRTYPE_A:
+            p_rpRRAnswer = new stcMDNS_RRAnswerA(p_Header, p_u32TTL);
+            bResult      = _readRRAnswerA(*(stcMDNS_RRAnswerA*&)p_rpRRAnswer, p_u16RDLength);
+            break;
+#endif
+        case DNS_RRTYPE_PTR:
+            p_rpRRAnswer = new stcMDNS_RRAnswerPTR(p_Header, p_u32TTL);
+            bResult      = _readRRAnswerPTR(*(stcMDNS_RRAnswerPTR*&)p_rpRRAnswer, p_u16RDLength);
+            break;
+        case DNS_RRTYPE_TXT:
+            p_rpRRAnswer = new stcMDNS_RRAnswerTXT(p_Header, p_u32TTL);
+            bResult      = _readRRAnswerTXT(*(stcMDNS_RRAnswerTXT*&)p_rpRRAnswer, p_u16RDLength);
+            break;
+#ifdef MDNS_IP6_SUPPORT
+        case DNS_RRTYPE_AAAA:
+            p_rpRRAnswer = new stcMDNS_RRAnswerAAAA(p_Header, p_u32TTL);
+            bResult      = _readRRAnswerAAAA(*(stcMDNS_RRAnswerAAAA*&)p_rpRRAnswer, p_u16RDLength);
+            break;
+#endif
+        case DNS_RRTYPE_SRV:
+            p_rpRRAnswer = new stcMDNS_RRAnswerSRV(p_Header, p_u32TTL);
+            bResult      = _readRRAnswerSRV(*(stcMDNS_RRAnswerSRV*&)p_rpRRAnswer, p_u16RDLength);
+            break;
+        default:
+            p_rpRRAnswer = new stcMDNS_RRAnswerGeneric(p_Header, p_u32TTL);
+            bResult = _readRRAnswerGeneric(*(stcMDNS_RRAnswerGeneric*&)p_rpRRAnswer, p_u16RDLength);
+            break;
+        }
+        DEBUG_EX_INFO(
+            if ((bResult) && (p_rpRRAnswer)) {
+                DEBUG_OUTPUT.printf_P(PSTR("[MDNSResponder] _readRRAnswer: "));
+                _printRRDomain(p_rpRRAnswer->m_Header.m_Domain);
+                DEBUG_OUTPUT.printf_P(PSTR(" Type:0x%04X Class:0x%04X TTL:%u, RDLength:%u "),
+                                      p_rpRRAnswer->m_Header.m_Attributes.m_u16Type,
+                                      p_rpRRAnswer->m_Header.m_Attributes.m_u16Class,
+                                      p_rpRRAnswer->m_u32TTL, p_u16RDLength);
+                switch (p_Header.m_Attributes.m_u16Type
+                        & (~0x8000))  // Topmost bit might carry 'cache flush' flag
+                {
+#ifdef MDNS_IP4_SUPPORT
+                case DNS_RRTYPE_A:
+                    DEBUG_OUTPUT.printf_P(
+                        PSTR("A IP:%s"),
+                        ((stcMDNS_RRAnswerA*&)p_rpRRAnswer)->m_IPAddress.toString().c_str());
+                    break;
+#endif
+                case DNS_RRTYPE_PTR:
+                    DEBUG_OUTPUT.printf_P(PSTR("PTR "));
+                    _printRRDomain(((stcMDNS_RRAnswerPTR*&)p_rpRRAnswer)->m_PTRDomain);
+                    break;
+                case DNS_RRTYPE_TXT:
+                {
+                    size_t stTxtLength
+                        = ((stcMDNS_RRAnswerTXT*&)p_rpRRAnswer)->m_Txts.c_strLength();
+                    char* pTxts = new char[stTxtLength];
+                    if (pTxts)
+                    {
+                        ((stcMDNS_RRAnswerTXT*&)p_rpRRAnswer)->m_Txts.c_str(pTxts);
+                        DEBUG_OUTPUT.printf_P(PSTR("TXT(%zu) %s"), stTxtLength, pTxts);
+                        delete[] pTxts;
+                    }
+                    break;
+                }
+#ifdef MDNS_IP6_SUPPORT
+                case DNS_RRTYPE_AAAA:
+                    DEBUG_OUTPUT.printf_P(
+                        PSTR("AAAA IP:%s"),
+                        ((stcMDNS_RRAnswerA*&)p_rpRRAnswer)->m_IPAddress.toString().c_str());
+                    break;
+#endif
+                case DNS_RRTYPE_SRV:
+                    DEBUG_OUTPUT.printf_P(PSTR("SRV Port:%u "),
+                                          ((stcMDNS_RRAnswerSRV*&)p_rpRRAnswer)->m_u16Port);
+                    _printRRDomain(((stcMDNS_RRAnswerSRV*&)p_rpRRAnswer)->m_SRVDomain);
+                    break;
+                default:
+                    DEBUG_OUTPUT.printf_P(PSTR("generic "));
+                    break;
+                }
+                DEBUG_OUTPUT.printf_P(PSTR("\n"));
+            } else {
+                DEBUG_OUTPUT.printf_P(PSTR("[MDNSResponder] _readRRAnswer: FAILED to read "
+                                           "specific answer of type 0x%04X!\n"),
+                                      p_rpRRAnswer->m_Header.m_Attributes.m_u16Type);
+            });  // DEBUG_EX_INFO
         return bResult;
     }
 

@@ -167,6 +167,57 @@ namespace MDNSImplementation
     }
 
     /*
+        MDNSResponder::_readKnownAnswer
+
+        Reads the next known answer of a query, but only when the known answer loop in
+        _parseQuery acts on it: it matches a planned reply with enough TTL left, or a tiebreak is
+        pending. Any other answer is skipped and p_rpRRAnswer stays 0, so it costs no heap.
+        Keep the conditions in step with that loop. Inlined so the header reuses the stack slot
+        of the question _parseQuery read before.
+    */
+    inline bool __attribute__((always_inline))
+    MDNSResponder::_readKnownAnswer(const MDNSResponder::stcMDNSSendParameter& p_SendParameter,
+                                    MDNSResponder::stcMDNS_RRAnswer*&          p_rpRRAnswer)
+    {
+        stcMDNS_RRHeader header;
+        uint32_t         u32TTL;
+        uint16_t         u16RDLength;
+        if (!((_readRRHeader(header)) && (_udpRead32(u32TTL)) && (_udpRead16(u16RDLength))))
+        {
+            return false;
+        }
+
+        bool bUsed = false;
+        if ((DNS_RRTYPE_ANY != header.m_Attributes.m_u16Type)
+            && (DNS_RRCLASS_ANY != header.m_Attributes.m_u16Class))
+        {
+            // Masks first: with no planned reply the domains are never built
+            bUsed = (m_HostProbeInformation.m_bTiebreakNeeded)
+                    || ((p_SendParameter.m_u8HostReplyMask) && ((MDNS_HOST_TTL / 2) <= u32TTL)
+                        && (p_SendParameter.m_u8HostReplyMask & _replyMaskForHost(header)));
+            for (stcMDNSService* pService = m_pServices; ((pService) && (!bUsed));
+                 pService                 = pService->m_pNext)
+            {
+                bUsed = (pService->m_ProbeInformation.m_bTiebreakNeeded)
+                        || ((pService->m_u8ReplyMask) && ((MDNS_SERVICE_TTL / 2) <= u32TTL)
+                            && (pService->m_u8ReplyMask & _replyMaskForService(header, *pService)));
+            }
+        }
+        if (bUsed)
+        {
+            return _readRRAnswerBody(header, u32TTL, u16RDLength, p_rpRRAnswer);
+        }
+
+        const size_t stNext = (m_pUDPContext->tell() + u16RDLength);
+        if (!m_pUDPContext->isValidOffset(stNext))
+        {
+            return false;
+        }
+        m_pUDPContext->seek(stNext);
+        return true;
+    }
+
+    /*
         MDNSResponder::_parseQuery
 
         Queries are of interest in two cases:
@@ -360,8 +411,9 @@ namespace MDNSImplementation
 
         for (uint32_t an = 0; ((bResult) && (an < u32Answers)); ++an)
         {
+            // Only answers this loop acts on are read whole (see _readKnownAnswer)
             stcMDNS_RRAnswer* pKnownRRAnswer = 0;
-            if (((bResult = _readRRAnswer(pKnownRRAnswer))) && (pKnownRRAnswer))
+            if (((bResult = _readKnownAnswer(sendParameter, pKnownRRAnswer))) && (pKnownRRAnswer))
             {
                 if ((DNS_RRTYPE_ANY != pKnownRRAnswer->m_Header.m_Attributes.m_u16Type)
                     &&  // No ANY type answer
@@ -634,7 +686,7 @@ namespace MDNSImplementation
                     }      // for services
                 }          // ANY answers
             }
-            else
+            else if (!bResult)
             {
                 DEBUG_EX_ERR(DEBUG_OUTPUT.printf_P(
                     PSTR("[MDNSResponder] _parseQuery: FAILED to read known answer!\n")););
