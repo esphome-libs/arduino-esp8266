@@ -167,13 +167,97 @@ namespace MDNSImplementation
     }
 
     /*
+        MDNSResponder::_udpReadDomainIs
+
+        Reads the domain at the current read position and compares it with p_Domain label by
+        label, following compression pointers, without copying it out. The read position is
+        undefined afterwards.
+    */
+    bool MDNSResponder::_udpReadDomainIs(const MDNSResponder::stcMDNS_RRDomain& p_Domain)
+    {
+        const unsigned char* pExpected      = (const unsigned char*)p_Domain.m_acName;
+        const unsigned char* pEnd           = (pExpected + p_Domain.m_u16NameLength);
+        uint8_t              u8Redirections = 0;
+        char                 acLabel[MDNS_DOMAIN_LABEL_MAXLENGTH];
+        uint8_t              u8Len;
+        while ((pExpected < pEnd) && (_udpRead8(u8Len)))
+        {
+            if (u8Len & MDNS_DOMAIN_COMPRESS_MARK)
+            {
+                uint8_t u8Low;
+                if ((MDNS_DOMAIN_MAX_REDIRCTION < ++u8Redirections) || (!_udpRead8(u8Low)))
+                {
+                    return false;
+                }
+                const size_t stOffset
+                    = ((((size_t)(u8Len & ~MDNS_DOMAIN_COMPRESS_MARK)) << 8) | u8Low);
+                if (!m_pUDPContext->isValidOffset(stOffset))
+                {
+                    return false;
+                }
+                m_pUDPContext->seek(stOffset);
+                continue;
+            }
+            if ((u8Len != *pExpected) || (MDNS_DOMAIN_LABEL_MAXLENGTH < u8Len))
+            {
+                return false;
+            }
+            if (0 == u8Len)
+            {
+                return true;
+            }
+            if ((!_udpReadBuffer((unsigned char*)acLabel, u8Len))
+                || (0 != strncasecmp(acLabel, (const char*)(pExpected + 1), u8Len)))
+            {
+                return false;
+            }
+            pExpected += (1 + u8Len);
+        }
+        return false;
+    }
+
+    /*
+        MDNSResponder::_knownPTRTargetIsOurs
+
+        For a known PTR answer that matched p_Service's type or name reply (p_u8ReplyMask), tells
+        whether its target, at p_stRData, is the domain the known answer loop compares it with.
+        Out of line so its domain is not on the stack with the reply mask helpers.
+    */
+    bool __attribute__((noinline))
+    MDNSResponder::_knownPTRTargetIsOurs(const MDNSResponder::stcMDNSService& p_Service,
+                                         uint8_t p_u8ReplyMask, size_t p_stRData)
+    {
+        stcMDNS_RRDomain serviceDomain;
+        if (p_u8ReplyMask & ContentFlag_PTR_TYPE)
+        {
+            m_pUDPContext->seek(p_stRData);
+            if ((_buildDomainForService(p_Service, false, serviceDomain))
+                && (_udpReadDomainIs(serviceDomain)))
+            {
+                return true;
+            }
+        }
+        if (p_u8ReplyMask & ContentFlag_PTR_NAME)
+        {
+            m_pUDPContext->seek(p_stRData);
+            if ((_buildDomainForService(p_Service, true, serviceDomain))
+                && (_udpReadDomainIs(serviceDomain)))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /*
         MDNSResponder::_readKnownAnswer
 
         Reads the next known answer of a query, but only when the known answer loop in
-        _parseQuery acts on it: it matches a planned reply with enough TTL left, or a tiebreak is
-        pending. Any other answer is skipped and p_rpRRAnswer stays 0, so it costs no heap; a used
-        one is read again by _readRRAnswer. Keep the conditions in step with that loop. Inlined so
-        the header reuses the stack slot of the question _parseQuery read before.
+        _parseQuery acts on it: it matches a planned reply with enough TTL left (for a service PTR,
+        only when it points at our service type or name), or a tiebreak is pending. Any other
+        answer is skipped and p_rpRRAnswer stays 0, so it costs no heap; a used one is read again
+        by _readRRAnswer. Keep the conditions in step with that loop. Inlined so the header reuses
+        the stack slot of the question _parseQuery read before.
     */
     inline bool __attribute__((always_inline))
     MDNSResponder::_readKnownAnswer(const MDNSResponder::stcMDNSSendParameter& p_SendParameter,
@@ -187,6 +271,14 @@ namespace MDNSImplementation
         {
             return false;
         }
+        const size_t stRData = m_pUDPContext->tell();
+        const size_t stNext  = (stRData + u16RDLength);
+        if (!m_pUDPContext->isValidOffset(stNext))
+        {
+            return false;
+        }
+        // As the stcMDNS_RRAnswer constructor does for the loop
+        header.m_Attributes.m_u16Class &= (~0x8000);
 
         bool bUsed = false;
         if ((DNS_RRTYPE_ANY != header.m_Attributes.m_u16Type)
@@ -199,21 +291,20 @@ namespace MDNSImplementation
             for (stcMDNSService* pService = m_pServices; ((pService) && (!bUsed));
                  pService                 = pService->m_pNext)
             {
-                bUsed = (pService->m_ProbeInformation.m_bTiebreakNeeded)
-                        || ((pService->m_u8ReplyMask) && ((MDNS_SERVICE_TTL / 2) <= u32TTL)
-                            && (pService->m_u8ReplyMask & _replyMaskForService(header, *pService)));
+                const uint8_t u8Mask
+                    = (((pService->m_u8ReplyMask) && ((MDNS_SERVICE_TTL / 2) <= u32TTL))
+                           ? (pService->m_u8ReplyMask & _replyMaskForService(header, *pService))
+                           : 0);
+                const uint8_t u8PTRMask = (u8Mask & (ContentFlag_PTR_TYPE | ContentFlag_PTR_NAME));
+                // A browse lists every device of our type: only a PTR to us is used
+                bUsed = (pService->m_ProbeInformation.m_bTiebreakNeeded) || (u8Mask & ~u8PTRMask)
+                        || ((u8PTRMask) && (_knownPTRTargetIsOurs(*pService, u8PTRMask, stRData)));
             }
         }
         if (bUsed)
         {
             m_pUDPContext->seek(stStart);
             return _readRRAnswer(p_rpRRAnswer);
-        }
-
-        const size_t stNext = (m_pUDPContext->tell() + u16RDLength);
-        if (!m_pUDPContext->isValidOffset(stNext))
-        {
-            return false;
         }
         m_pUDPContext->seek(stNext);
         return true;
