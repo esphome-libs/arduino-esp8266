@@ -93,22 +93,26 @@ enum class Ours {
 struct Case {
   const char* name;
   const char* service;  // queried service type, "_http" is ours
+  bool srv;             // ask for the instance's SRV instead of browsing the type
   Ours ours;
   size_t expectedAllocations;
   bool expectReply;
 };
 
 static const Case CASES[] = {
-  { "other instances only", "_http", Ours::NONE, 0, true },
-  { "ours among others", "_http", Ours::TTL_LONG, 1, false },
-  { "ours with the cache-flush bit", "_http", Ours::CACHE_FLUSH, 1, false },
-  { "ours with too little TTL left", "_http", Ours::TTL_SHORT, 0, true },
-  { "a type we do not offer", "_none", Ours::NONE, 0, false },
+  { "other instances only", "_http", false, Ours::NONE, 0, true },
+  { "ours among others", "_http", false, Ours::TTL_LONG, 1, false },
+  { "ours with the cache-flush bit", "_http", false, Ours::CACHE_FLUSH, 1, false },
+  { "ours with too little TTL left", "_http", false, Ours::TTL_SHORT, 0, true },
+  { "a type we do not offer", "_none", false, Ours::NONE, 0, false },
+  { "SRV, other instances only", "_http", true, Ours::NONE, 0, true },
+  { "SRV, ours among others", "_http", true, Ours::TTL_LONG, 1, false },
 };
 
-// A query for <service>._tcp.local asking for a unicast reply, plus a second question so it is
-// not handled as a legacy query, with known PTR answers to other instances and maybe to us.
-// Targets alternate between compressed (label + pointer) and spelled out names.
+// A query asking for a unicast reply, plus a second question so it is not handled as a legacy
+// query, with known answers for other instances and maybe for us. A browse of <service>._tcp.local
+// lists PTRs whose targets alternate between compressed (label + pointer) and spelled out names;
+// an SRV query for our instance lists SRVs of other instances.
 static void buildQuery(Packet& p, const Case& c) {
   p.len = 0;
   p.u16(0);  // ID
@@ -118,14 +122,18 @@ static void buildQuery(Packet& p, const Case& c) {
   p.u16(0);
   p.u16(0);
 
+  const uint16_t instanceOffset = p.len;  // <instance>.<service>._tcp.local for an SRV query
+  if (c.srv) {
+    p.label(INSTANCE);
+  }
   const uint16_t serviceOffset = p.len;  // <service>._tcp.local
   p.label(c.service);
   const uint16_t tcpOffset = p.len;
   p.label("_tcp");
   p.label("local");
   p.u8(0);
-  p.u16(12);      // PTR
-  p.u16(0x8001);  // IN, unicast reply wanted
+  p.u16(c.srv ? 33 : 12);  // SRV or PTR
+  p.u16(0x8001);           // IN, unicast reply wanted
 
   p.label("_other");
   p.pointer(tcpOffset);
@@ -153,14 +161,42 @@ static void buildQuery(Packet& p, const Case& c) {
     p.data[rdLength + 1] = n & 0xff;
   };
 
+  // An SRV owned by <instance>.<service>._tcp.local pointing at <instance>.local, port 80
+  auto srvAnswer = [&](const char* instance, bool ours) {
+    if (ours) {
+      p.pointer(instanceOffset);
+    } else {
+      p.label(instance);
+      p.pointer(serviceOffset);
+    }
+    p.u16(33);
+    p.u16(1);
+    p.u32(4500);
+    p.u16(6 + 1 + strlen(instance) + 1 + 5 + 1);
+    p.u16(0);  // priority
+    p.u16(0);  // weight
+    p.u16(80);
+    p.label(instance);
+    p.label("local");
+    p.u8(0);
+  };
+
   char other[16];
   for (uint16_t i = 0; i < OTHERS; ++i) {
     snprintf(other, sizeof(other), "dev%u", i);
-    answer(other, 1, 4500, (0 == (i % 2)));
+    if (c.srv) {
+      srvAnswer(other, false);
+    } else {
+      answer(other, 1, 4500, (0 == (i % 2)));
+    }
     if ((OTHERS / 2 == i) && (Ours::NONE != c.ours))  // ours in the middle of the list
     {
-      answer(INSTANCE, (Ours::CACHE_FLUSH == c.ours) ? 0x8001 : 1,
-             (Ours::TTL_SHORT == c.ours) ? 100 : 4500, true);
+      if (c.srv) {
+        srvAnswer(INSTANCE, true);
+      } else {
+        answer(INSTANCE, (Ours::CACHE_FLUSH == c.ours) ? 0x8001 : 1,
+               (Ours::TTL_SHORT == c.ours) ? 100 : 4500, true);
+      }
     }
   }
 }
