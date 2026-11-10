@@ -234,9 +234,12 @@ void loop() {
     largeAllocations = 0;
     gotReply = replyIsOurs = false;
     counting = true;
-    client.beginPacket(WiFi.localIP(), MDNS_PORT);
-    client.write(p.data, p.len);
-    client.endPacket();
+    // A query that is not sent would pass the no-reply cases
+    if (!client.beginPacket(WiFi.localIP(), MDNS_PORT) || (client.write(p.data, p.len) != p.len)
+        || !client.endPacket()) {
+      Serial.printf("FAIL: %s: query not sent\n", c.name);
+      ++failures;
+    }
     caseStart = millis();
     sent = true;
     return;
