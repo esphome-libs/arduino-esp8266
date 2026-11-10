@@ -413,7 +413,8 @@ namespace MDNSImplementation
 
         for (uint32_t an = 0; ((bResult) && (an < u32Answers)); ++an)
         {
-            // Only answers this loop acts on are read whole (see _readKnownAnswer)
+            // Only answers this loop acts on are read whole: a new condition below must also be
+            // added to _readKnownAnswer, or the answers it needs are skipped
             stcMDNS_RRAnswer* pKnownRRAnswer = 0;
             if (((bResult = _readKnownAnswer(sendParameter, pKnownRRAnswer))) && (pKnownRRAnswer))
             {
